@@ -58,10 +58,12 @@
 // Included Files
 //
 #include "f28x_project.h"
+#include "driver_boot.h"
 
 //
 // Defines
 //
+
 #define DEVICE_GPIO_PIN_LED1    12
 #define DEVICE_GPIO_PIN_LED2    13
 
@@ -93,12 +95,12 @@ void main(void)
     //
     //  Send boot command to allow the CPU02 application to begin execution
     //
-    IPCBootCPU2(C1C2_BROM_BOOTMODE_BOOT_FROM_FLASH);
+    Device_bootCPU2(BOOTMODE_BOOT_TO_FLASH_BANK3_SECTOR0);
 #else
     //
     //  Send boot command to allow the CPU02 application to begin execution
     //
-    IPCBootCPU2(C1C2_BROM_BOOTMODE_BOOT_FROM_RAM);
+    Device_bootCPU2(BOOTMODE_BOOT_TO_M0RAM);
 #endif
 #endif
 

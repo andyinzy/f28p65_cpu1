@@ -24,11 +24,4 @@
 		<nature>org.eclipse.cdt.core.ccnature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
-	<linkedResources>
-		<link>
-			<name>TargetConfigs/f28p65x_TargeConfig.ccxml</name>
-			<type>1</type>
-			<location>C:/Users/WILLIA~1.YUA/ti/CCSTargetConfigurations/f28p65x_TargeConfig.ccxml</location>
-		</link>
-	</linkedResources>
 </projectDescription>
