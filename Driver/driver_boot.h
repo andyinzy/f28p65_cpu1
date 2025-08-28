@@ -75,7 +75,7 @@
 
 bool SysCtl_isCPU2Reset(void);
 void Device_bootCPU2(uint32_t);
-void SysCtl_controlCPU2Reset(bool);
+void SysCtl_controlCPU2Reset(void);
 
 #endif
 
