@@ -10,7 +10,7 @@ void sInitInputXbar(void)
 
     InputXbarRegs.INPUT5SELECT = 41;    // xint2, gpio49, bus volt overINPUTS
     
-    InputXbarRegs.INPUT7SELECT = 37;    // capl,  gpio39, grid zero M crossINPUT7
+    InputXbarRegs.INPUT7SELECT = 37;    // cap1,  gpio39, grid zero M crossINPUT7
     InputXbarRegs.INPUT8SELECT = 36;    // cap2,  gpio46, inv current overINPUT8
     InputXbarRegs.INPUT9SELECT = 38;    // cap3,  gpio38, grid zero S crossINPUT9
     InputXbarRegs.INPUT10SELECT = 87;   // cap4,  gpio87, pv2 current overINPUT10
