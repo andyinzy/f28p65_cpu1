@@ -1,265 +1,282 @@
 //#############################################################################
 //
-// FILE:   led_ex1_blinky.c
+// FILE:   main.c
+// TITLE:  Migration Sanity Test: Manual GPIO Trigger for eCAP Capture/ISR
 //
-// TITLE:  LED Blinky Example
-//
-//! \addtogroup bitfield_example_list
-//! <h1> LED Blinky Example </h1>
-//!
-//! This example demonstrates how to blink a LED.
-//!
-//! \b External \b Connections \n
-//!  - None.
-//!
-//! \b Watch \b Variables \n
-//!  - None.
-//!
-//
-//#############################################################################
-//
-//
-//
-// C2000Ware v6.00.00.00
-//
-// Copyright (C) 2024 Texas Instruments Incorporated - http://www.ti.com
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions
-// are met:
-//
-//   Redistributions of source code must retain the above copyright
-//   notice, this list of conditions and the following disclaimer.
-//
-//   Redistributions in binary form must reproduce the above copyright
-//   notice, this list of conditions and the following disclaimer in the
-//   documentation and/or other materials provided with the
-//   distribution.
-//
-//   Neither the name of Texas Instruments Incorporated nor the names of
-//   its contributors may be used to endorse or promote products derived
-//   from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// $
 //#############################################################################
 
-//
-// Included Files
-//
+// GPIO0 is xint 1
+// GPIO7 is ecap 1
+// GPIO5 is ecap 2
+// 
+
+
 #include "f28x_project.h"
 #include "driver_boot.h"
+#include "driver_ecap.h"
 
 //
-// Defines
+// Defines for our simple test
 //
-
-#define DEVICE_GPIO_PIN_LED1    12
+#define LED_PIN         12  // GPIO12, connected to an LED
 #define DEVICE_GPIO_PIN_LED2    13
+#define TRIGGER_PIN     32  // GPIO32, will be toggled in software
+#define CAPTURE_PIN     5   // GPIO5, will receive the signal from TRIGGER_PIN
 
-
-#define SAWTOOTH_PERIOD       5000000U  // Corresponds to the peak of the sawtooth
-#define SAWTOOTH_INCREMENT    100000U      // Step size for the ramp
-#define BLINK_COUNT_MAX       10        // 10 blinks (10 on + 10 off)
-
-volatile uint16_t ledBlinkCount = 0;
-__interrupt  void ecap2_isr(void); // 声明中断服务函数
-
-
+#define BLINK_COUNT_MAX 20  // Blink 10 times then stop
 
 //
-// InitAPwm1 - Configure eCAP1 in APWM mode to generate a sawtooth wave
+// Globals
 //
-void InitAPwm1(void)
-{
-    EALLOW;
-    ECap1Regs.ECCTL2.bit.CAP_APWM = 1;      // Enable APWM mode
-    ECap1Regs.CAP1 = SAWTOOTH_PERIOD;       // Set Period value
-    ECap1Regs.CAP2 = SAWTOOTH_INCREMENT;    // Set initial Compare value
-    ECap1Regs.CAP4 = SAWTOOTH_INCREMENT;    // Set initial Shadow Compare value
-    ECap1Regs.ECCLR.all = 0x0FF;            // Clear pending interrupts
-    ECap1Regs.ECCTL2.bit.SYNCO_SEL = 2;      // Syncout on period match
-    ECap1Regs.ECCTL2.bit.TSCTRSTOP = 1;     // Start counter
-    EDIS;
-}
+volatile uint16_t isr_exc_cnt = 0;
 
 //
-// InitECap2Capture - Configure eCAP2 in capture mode
+// Function Prototypes
 //
-void InitECap2Capture(void)
-{
-    EALLOW;
-    ECap2Regs.ECCTL2.bit.CAP_APWM = 0;      // Disable APWM mode (Capture Mode)
-    ECap2Regs.ECCTL2.bit.CONT_ONESHT = 0;   // Continuous capture mode
-    ECap2Regs.ECCTL1.bit.CAP1POL = 0;       // Capture on Rising Edge
-    ECap2Regs.ECCTL1.bit.CTRRST1 = 1;       // Reset counter on capture event
-    ECap2Regs.ECEINT.bit.CEVT1 = 1;         // Enable Capture Event 1 interrupt
-    ECap2Regs.ECCTL2.bit.TSCTRSTOP = 1;     // Start counter
-    EDIS;
-}
-
-void InitTestGpioAndXbar(void)
-{
-    EALLOW;
-    // --- 输出配置 ---
-    // 选择 eCAP1.OUT 作为 OUTPUTXBAR3 的 MUX0 输出
-    OutputXbarRegs.EXT64_OUTPUT3MUX0TO15CFG.bit.MUX0 = 3; // Select ECAP1.OUT on Mux0
-    OutputXbarRegs.EXT64_OUTPUT3MUXENABLE.bit.MUX0 = 1;  // Enable MUX0 for ECAP1.OUT
-    // 将 GPIO5 配置为 OUTPUTXBAR3 的输出
-    GpioCtrlRegs.GPAGMUX1.bit.GPIO5 = 0;
-    GpioCtrlRegs.GPAMUX1.bit.GPIO5 = 3; // GPIO5 = OUTPUTXBAR3
-
-    // --- 输入配置 ---
-    // 将 GPIO5 配置为 eCAP2 的输入
-    InputXbarRegs.INPUT7SELECT = 5; // INPUT7 连接到 GPIO5 (eCAP2 的输入)
-    EDIS;
-}
-
-// LED 闪烁中断服务程序
-__interrupt  void ecap2_isr(void)
-{
-    // 闪烁10次
-    if (ledBlinkCount < BLINK_COUNT_MAX) // 10次亮灭为20个状态
-    {
-        GPIO_WritePin(DEVICE_GPIO_PIN_LED1, 0);// Turn on LED
-        DELAY_US(5000);
-        GPIO_WritePin(DEVICE_GPIO_PIN_LED1, 1);// Turn off LED
-        DELAY_US(5000);
-        ledBlinkCount++;
-    }
-
-    // 清除 eCAP 中断标志位
-    ECap2Regs.ECCLR.bit.CEVT1 = 1;
-    ECap2Regs.ECCLR.all = 0x0FF;          // Clear pending __interrupts
-    // 响应 PIE 中断
-    PieCtrlRegs.PIEACK.all = PIEACK_GROUP4;
-}
+void InitTestGpio(void);
+void InitECap1(void);
+void InitECap2(void);
+void InitXbar(void);
+void InitXintGpio(void);
+__interrupt void ecap1_isr(void);
+__interrupt void ecap2_isr(void);
+__interrupt void xint1_isr(void);
 
 //
 // Main
 //
 void main(void)
 {
-    //
-    // Initialize device clock and peripherals
-    //
+    // 1. Initialize System
     InitSysCtrl();
-    
-    //
-    // Write the controller select setting into the appropriate field.
-    //
-    EALLOW;
-        MemCfgRegs.GSxMSEL.bit.MSEL_GS4 = 1U;
-    EDIS;
-
-    DevCfgRegs.BANKMUXSEL.bit.BANK3 = 3U;
-    DevCfgRegs.BANKMUXSEL.bit.BANK4 = 3U;
-
-    //
-    // Boot CPU2 core
-    //
-#ifdef _STANDALONE
-#ifdef _FLASH
-    //
-    //  Send boot command to allow the CPU02 application to begin execution
-    //
-    Device_bootCPU2(BOOTMODE_BOOT_TO_FLASH_BANK3_SECTOR0);
-#else
-    //
-    //  Send boot command to allow the CPU02 application to begin execution
-    //
-    Device_bootCPU2(BOOTMODE_BOOT_TO_M0RAM);
-#endif
-#endif
-
-    //
-    // Initialize GPIO and configure the GPIO pin as a push-pull output
-    //
     InitGpio();
-    GPIO_SetupPinMux(DEVICE_GPIO_PIN_LED1, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(DEVICE_GPIO_PIN_LED1, GPIO_OUTPUT, GPIO_PUSHPULL);
 
-    GPIO_SetupPinMux(DEVICE_GPIO_PIN_LED2, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(DEVICE_GPIO_PIN_LED2, GPIO_OUTPUT, GPIO_PUSHPULL);    
 
-    InitAPwm1();
-    InitECap2Capture();
-    InitTestGpioAndXbar();
-    //
-    // Initialize PIE and clear PIE registers. Disables CPU interrupts.
-    //
+
+    // 3. Initialize and configure Interrupts
     DINT;
     InitPieCtrl();
     IER = 0x0000;
     IFR = 0x0000;
-
-    //
-    // Initialize the PIE vector table with pointers to the shell Interrupt
-    // Service Routines (ISR).
-    //
     InitPieVectTable();
 
-    EALLOW;  // This is needed to write to EALLOW protected registers
-    PieVectTable.ECAP1_INT = &ecap2_isr;
-    EDIS;    // This is needed to disable write to EALLOW protected registers
+    // check pievecttable for xint1 (1.4) and ecap2 (4.2)
+    EALLOW;
+    PieVectTable.ECAP1_INT = &ecap1_isr;
+    PieVectTable.ECAP2_INT = &ecap2_isr;
+    PieVectTable.XINT1_INT = &xint1_isr;
+    EDIS;
 
-    //
-    // Enable XINT1 and XINT2 in the PIE: Group 1 interrupt 4 & 5
-    // Enable INT1 which is connected to WAKEINT:
-    //
+    // Enable the correct PIE channel for ECAP2_INT (Group 4, INT 2)
     PieCtrlRegs.PIECTRL.bit.ENPIE = 1;          // Enable the PIE block
-    PieCtrlRegs.PIEIER4.bit.INTx2 = 1;          // Enable PIE Group 4 INT2 correspond ecap2 INT2
+    PieCtrlRegs.PIEIER4.bit.INTx1 = 1;          // 4.1 ecap1 
+    PieCtrlRegs.PIEIER4.bit.INTx2 = 1;          // 4.2 ecap2
+    PieCtrlRegs.PIEIER1.bit.INTx4 = 1;          // 1.4 xint1
 
-    IER |= M_INT4;                              // Enable CPU INT4
-    EINT;                                       // Enable Global Interrupts
+    // Enable the corresponding CPU interrupt (INT4 for PIE Group 4)
+    IER |= M_INT1;
+    IER |= M_INT4;
 
-    //
-    // Enable Global Interrupt (INTM) and realtime interrupt (DBGM)
-    //
+    // 2. Configure peripherals for our test
+    sInitEcap();
+    InitTestGpio();
+    // InitECap1();
+    // InitECap2();
+    InitXbar();
+    // Enable global interrupts
     EINT;
     ERTM;
-    uint32_t current_compare = SAWTOOTH_INCREMENT;
-    //
-    // Loop Forever
-    //
+
+    
+    InitXintGpio();
+    GPIO_SetupXINT1Gpio(0);
+    XintRegs.XINT1CR.bit.POLARITY = 0;          // Falling edge interrupt
+    XintRegs.XINT1CR.bit.ENABLE = 1;            // Enable XINT1
+
+
+    // 4. Main loop: Manually toggle the trigger pin
     for(;;)
     {
-        GPIO_WritePin(DEVICE_GPIO_PIN_LED1, 1);// Turn off LED
-        GPIO_WritePin(DEVICE_GPIO_PIN_LED2, 1);// Turn off LED
+        // Set trigger pin high
+        GPIO_WritePin(TRIGGER_PIN, 1);
 
-        current_compare += SAWTOOTH_INCREMENT;
-        // 模拟锯齿波上升
-        // 通过逐渐增加比较值来提高占空比
-        if(current_compare >= SAWTOOTH_PERIOD)
-        {
-            current_compare = SAWTOOTH_INCREMENT;
-            GPIO_WritePin(DEVICE_GPIO_PIN_LED1, 0);// Turn on LED
-            DELAY_US(2000000);
-        }
-        //
-        // Update the shadow register. The new compare value will be loaded
-        // at the start of the next PWM period.
-        //
-        ECap1Regs.CAP4 = current_compare;
-        DELAY_US(100000); // 延时以控制锯齿波的斜率
+        // Delay to ensure the signal is stable
+        DELAY_US(100000); // 100ms
 
+        // Set trigger pin low
+        GPIO_WritePin(TRIGGER_PIN, 0);
 
-        // GPIO_WritePin(DEVICE_GPIO_PIN_LED1, 0);// Turn on LED
-        // GPIO_WritePin(DEVICE_GPIO_PIN_LED1, 1);// Turn off LED
-        // DELAY_US(500000);
+        // Delay
+        DELAY_US(100000); // 100ms
     }
 }
 
 //
-// End of File
+// InitTestGpio - Configure pins for the test
+//
+void InitTestGpio(void)
+{
+    // Configure LED_PIN (GPIO12) as a push-pull output
+    GPIO_SetupPinMux(LED_PIN, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(LED_PIN, GPIO_OUTPUT, GPIO_PUSHPULL);
+    GPIO_WritePin(LED_PIN, 1); // Start with LED off
+
+    // Configure DEVICE_GPIO_PIN_LED2 (GPIO13) as a push-pull output
+    GPIO_SetupPinMux(DEVICE_GPIO_PIN_LED2, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(DEVICE_GPIO_PIN_LED2, GPIO_OUTPUT, GPIO_PUSHPULL);
+    GPIO_WritePin(DEVICE_GPIO_PIN_LED2, 1); // Start with LED off
+
+    // Configure TRIGGER_PIN (GPIO32) as a push-pull output
+    GPIO_SetupPinMux(TRIGGER_PIN, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(TRIGGER_PIN, GPIO_OUTPUT, GPIO_PUSHPULL);
+
+
+    // Configure ECAP2 on GPIO5
+    // No pull-up needed as it's driven by TRIGGER_PIN
+    // GPIO_SetupPinMux(CAPTURE_PIN, GPIO_MUX_CPU1, 0);
+    // GPIO_SetupPinOptions(CAPTURE_PIN, GPIO_INPUT, GPIO_SYNC);
+
+
+    /*GRID_ZERO_M,ecap1 */
+    // GpioCtrlRegs.GPAGMUX1.bit.GPIO5 = 0b00;
+    // GpioCtrlRegs.GPAMUX1.bit.GPIO5 = 0b00;
+    // GpioCtrlRegs.GPACSEL1.bit.GPIO5 = 0;/*cpu1*/
+    // GpioCtrlRegs.GPADIR.bit.GPIO5 = 0;/*input*/
+    // // 不用qualified
+    // // GpioCtrlRegs.GPBCTRL.bit.QUALPRDO=0x30;/*GPI032~GPI039*/
+    // // GpioCtrlRegs.GPBQSEL1.bit.GPIO39 = 1;/*3 samples,2*2*48*5ns= 960ns*/
+    // GpioCtrlRegs.GPAPUD.bit.GPIO5 =0;/*pullup*/
+}
+
+
+//
+// InitECap1 - Configure eCAP1 for simple falling edge capture
+//
+void InitECap1(void)
+{
+    EALLOW;
+    ECap1Regs.ECCTL2.bit.TSCTRSTOP = 0;     // Stop counter
+    ECap1Regs.ECEINT.all = 0x0000;          // Disable all capture interrupt
+    ECap1Regs.ECCLR.all = 0xFFFF;           // Clear all Ecap interrupt flag
+    ECap1Regs.ECCTL1.bit.CAPLDEN = 1;       // Enable CAP1 register loads
+    ECap1Regs.ECCTL1.bit.CAP1POL = 0;       // Falling Edge
+    ECap1Regs.ECCTL1.bit.CTRRST1 = 1;       // Reset after event 1 has been captured
+    ECap1Regs.ECCTL2.bit.CONT_ONESHT = 1;   // Operate in continuous mode
+    ECap1Regs.ECCTL2.bit.STOP_WRAP = 0;     // Wrap after capture event 1
+    ECap1Regs.ECEINT.bit.CEVT1 = 1;         // Enable capture event 1 interrupt
+    ECap1Regs.ECCTL2.bit.REARM = 1;         // One-shot re-arm
+    ECap1Regs.ECCTL2.bit.TSCTRSTOP = 1;     // Start Counter
+    EDIS;
+}
+
+//
+// InitECap2 - Configure eCAP2 for simple rising edge capture
+//
+void InitECap2(void)
+{
+    EALLOW;
+    ECap2Regs.ECCTL2.bit.TSCTRSTOP = 0;     // Stop counter
+    ECap2Regs.ECEINT.all = 0x0000;          // Disable all capture interrupt
+    ECap2Regs.ECCLR.all = 0xFFFF;           // Clear all Ecap interrupt flag
+    ECap2Regs.ECCTL1.bit.CAPLDEN = 1;       // Enable CAP1 register loads
+    ECap2Regs.ECCTL1.bit.CAP1POL = 1;       // Falling Edge
+    ECap2Regs.ECCTL1.bit.CTRRST1 = 1;       // Reset after event 1 has been captured
+    ECap2Regs.ECCTL2.bit.CONT_ONESHT = 1;   // Operate in continuous mode
+    ECap2Regs.ECCTL2.bit.STOP_WRAP = 0;     // Wrap after capture event 1
+    ECap2Regs.ECEINT.bit.CEVT1 = 1;         // Enable capture event 1 interrupt
+    ECap2Regs.ECCTL2.bit.REARM = 1;         // One-shot re-arm
+    ECap2Regs.ECCTL2.bit.TSCTRSTOP = 1;     // Start Counter
+    EDIS;
+}
+
+//
+// InitXbar - Configure Input XBAR to route CAPTURE_PIN to eCAP2
+//
+void InitXbar(void)
+{
+    EALLOW;
+    // eCAP1 on GPIO7
+    GpioCtrlRegs.GPAPUD.bit.GPIO7 = 0;    // Enable pullup on GPIO7
+    GpioCtrlRegs.GPAQSEL1.bit.GPIO7 = 0;  // Synch to SYSCLKOUT
+    InputXbarRegs.INPUT7SELECT = 7;       // INPUT7 = GPIO7
+    ECap1Regs.ECCTL0.bit.INPUTSEL = 7;    // Select eCAP1 TO INPUTXBAR8
+    
+    // eCAP2 on GPIO5
+    GpioCtrlRegs.GPAPUD.bit.GPIO5 = 0;    // Enable pullup on GPIO5
+    GpioCtrlRegs.GPAQSEL1.bit.GPIO5 = 0;  // Synch to SYSCLKOUT
+    InputXbarRegs.INPUT8SELECT = 5; // INPUT8 = GPIO5
+    ECap2Regs.ECCTL0.bit.INPUTSEL = 8;      // Select eCAP1 TO INPUTXBAR9
+    EDIS;
+}
+
+//
+// ecap1_isr - The Interrupt Service Routine
+//
+__interrupt void ecap1_isr(void)
+{
+    for(isr_exc_cnt = 0; isr_exc_cnt < BLINK_COUNT_MAX; isr_exc_cnt++)
+    {
+        // blink LED
+        GPIO_WritePin(LED_PIN, 0);// Turn on
+        DELAY_US(5000);
+        GPIO_WritePin(LED_PIN, 1);// Turn off
+        DELAY_US(5000);
+    }
+
+    // Clear eCAP interrupt flags
+    ECap1Regs.ECCLR.bit.CEVT1 = 1;
+    ECap1Regs.ECCLR.bit.INT = 1;
+
+    // Acknowledge this interrupt to receive more interrupts from this PIE group
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP4;
+}
+
+//
+// ecap2_isr - The Interrupt Service Routine
+//
+__interrupt void ecap2_isr(void)
+{
+    for(isr_exc_cnt = 0; isr_exc_cnt < BLINK_COUNT_MAX; isr_exc_cnt++)
+    {
+        // blink LED
+        GPIO_WritePin(LED_PIN, 0);// Turn on
+        DELAY_US(5000);
+        GPIO_WritePin(LED_PIN, 1);// Turn off
+        DELAY_US(5000);
+    }
+
+    // Clear eCAP interrupt flags
+    ECap2Regs.ECCLR.bit.CEVT1 = 1;
+    ECap2Regs.ECCLR.bit.INT = 1;
+
+    // Acknowledge this interrupt to receive more interrupts from this PIE group
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP4;
+}
+
+__interrupt void xint1_isr(void)
+{
+    for(isr_exc_cnt = 0; isr_exc_cnt < BLINK_COUNT_MAX; isr_exc_cnt++)
+    {
+        // blink LED
+        GPIO_WritePin(DEVICE_GPIO_PIN_LED2, 0);// Turn on
+        DELAY_US(5000);
+        GPIO_WritePin(DEVICE_GPIO_PIN_LED2, 1);// Turn off
+        DELAY_US(5000);
+    }
+
+    GpioDataRegs.GPBCLEAR.all = 0x4;   // GPIO34 is low
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+
+
+void InitXintGpio(void)
+{
+    EALLOW;
+    GpioCtrlRegs.GPAMUX1.bit.GPIO0 = 0;         // GPIO
+    GpioCtrlRegs.GPADIR.bit.GPIO0 = 0;          // input
+    GpioCtrlRegs.GPAQSEL1.bit.GPIO0 = 0;        // XINT1 Synch to SYSCLKOUT only
+    EDIS;
+}
+//
+// End of file
 //

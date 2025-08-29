@@ -1,3 +1,14 @@
+//#############################################################################
+//
+// File: driver_xbar.h
+//
+// Description: This header file contains definitions and macros for the
+//              Crossbar (XBAR) module driver. It includes function declarations
+//              and macros for checking and clearing XBAR trip status flags
+//              used in system protection and monitoring.
+//
+//#############################################################################
+
 #ifndef DRIVER_XBARS_H_
 #define DRIVER_XBARS_H_
 

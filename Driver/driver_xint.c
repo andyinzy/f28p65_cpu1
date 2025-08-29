@@ -1,3 +1,14 @@
+//#############################################################################
+//
+// File: driver_xint.c
+//
+// Description: This file contains functions for configuring and initializing
+//              the External Interrupt (XINT) module on the F28P65x device.
+//              It includes initialization functions for XINT1 and XINT2,
+//              configured for falling edge interrupt detection.
+//
+//#############################################################################
+
 #include "f28p65x_device.h"
 #include "f28p65x_xint.h"
 #include "driver_xint.h"

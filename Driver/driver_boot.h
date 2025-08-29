@@ -1,3 +1,14 @@
+//#############################################################################
+//
+// File: driver_boot.h
+//
+// Description: This header file contains macros and function declarations
+//              for booting CPU2 from CPU1. It defines boot modes, register
+//              addresses, bit fields, and function prototypes used in the
+//              CPU2 boot process.
+//
+//#############################################################################
+
 //*****************************************************************************
 //
 // Macros related to booting CPU2. These can be used while invoking the

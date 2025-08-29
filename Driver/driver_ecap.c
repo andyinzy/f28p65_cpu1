@@ -1,3 +1,14 @@
+//#############################################################################
+//
+// File: driver_ecap.c
+//
+// Description: This file contains functions for configuring and initializing
+//              the Enhanced Capture (eCAP) modules on the F28P65x device.
+//              It includes initialization functions for eCAP1 through eCAP5,
+//              and an interrupt handler for eCAP1.
+//
+//#############################################################################
+
 #include "f28p65x_device.h"
 #include "f28p65x_ecap.h"
 #include "driver_ecap.h"

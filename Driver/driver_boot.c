@@ -1,3 +1,13 @@
+//#############################################################################
+//
+// File: driver_boot.c
+//
+// Description: This file contains functions for booting CPU2 from CPU1.
+//              It includes functions to check CPU2 reset status, boot CPU2
+//              with specified boot mode, and control CPU2 reset.
+//
+//#############################################################################
+
 #include "f28x_project.h"
 #include "driver_boot.h"
 #include "f28p65x_ipc_defines.h"

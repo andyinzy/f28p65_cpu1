@@ -1,3 +1,14 @@
+//#############################################################################
+//
+// File: driver_ecap.h
+//
+// Description: This header file contains definitions and declarations for the
+//              Enhanced Capture (eCAP) module driver. It includes pin definitions,
+//              edge detection constants, and function prototypes for eCAP
+//              configuration and operation.
+//
+//#############################################################################
+
 #ifndef DRIVER_ECAP_H
 #define DRIVER_ECAP_H
 
@@ -21,7 +32,7 @@
 // extern volatile uint16_t gEcapLedState;
 
 // // Function declarations
-// extern void sInitEcap(void);
+extern void sInitEcap(void);
 // extern void sInitEcapForTest(void);
 // extern void sConfigEcap1(uint16_t polarity);
 // extern void sSetupEcapTestPin(void);
